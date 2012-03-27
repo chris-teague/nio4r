@@ -1,8 +1,5 @@
 require 'spec_helper'
 
-# TODO: this should come in via native extension
-class NIO::Buffer; end
-
 describe NIO::Buffer do
   before :each do
     @buffer = NIO::Buffer.new

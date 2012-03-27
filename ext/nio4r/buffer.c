@@ -4,9 +4,7 @@
  * See LICENSE for details
  */
 
-#include "ruby.h"
-#include "rubyio.h"
-
+#include "nio4r.h"
 #include <assert.h>
 
 #include <string.h>
@@ -17,15 +15,8 @@
 /* 1 GiB maximum buffer size */
 #define MAX_BUFFER_SIZE 0x40000000
 
-/* Macro for retrieving the file descriptor from an FPTR */
-#if !HAVE_RB_IO_T_FD
-#define FPTR_TO_FD(fptr) fileno(fptr->f)
-#else
-#define FPTR_TO_FD(fptr) fptr->fd
-#endif
-
 /* Default number of bytes in each node's buffer.  Should be >= MTU */
-#define DEFAULT_NODE_SIZE 16384
+#define DEFAULT_NODE_SIZE 4096
 static unsigned default_node_size = DEFAULT_NODE_SIZE;
 
 struct buffer {
@@ -41,25 +32,26 @@ struct buffer_node {
     unsigned char   data[0];
 };
 
-static VALUE    cIO_Buffer = Qnil;
+static VALUE    mNIO = Qnil;
+static VALUE    cNIO_Buffer = Qnil;
 
-static VALUE    IO_Buffer_allocate(VALUE klass);
-static void     IO_Buffer_mark(struct buffer *);
-static void     IO_Buffer_free(struct buffer *);
+static VALUE    NIO_Buffer_allocate(VALUE klass);
+static void     NIO_Buffer_mark(struct buffer *);
+static void     NIO_Buffer_free(struct buffer *);
 
-static VALUE    IO_Buffer_default_node_size(VALUE klass);
-static VALUE    IO_Buffer_set_default_node_size(VALUE klass, VALUE size);
-static VALUE    IO_Buffer_initialize(int argc, VALUE * argv, VALUE self);
-static VALUE    IO_Buffer_clear(VALUE self);
-static VALUE    IO_Buffer_size(VALUE self);
-static VALUE    IO_Buffer_empty(VALUE self);
-static VALUE    IO_Buffer_append(VALUE self, VALUE data);
-static VALUE    IO_Buffer_prepend(VALUE self, VALUE data);
-static VALUE    IO_Buffer_read(int argc, VALUE * argv, VALUE self);
-static VALUE    IO_Buffer_read_frame(VALUE self, VALUE data, VALUE mark);
-static VALUE    IO_Buffer_to_str(VALUE self);
-static VALUE    IO_Buffer_read_from(VALUE self, VALUE io);
-static VALUE    IO_Buffer_write_to(VALUE self, VALUE io);
+static VALUE    NIO_Buffer_default_node_size(VALUE klass);
+static VALUE    NIO_Buffer_set_default_node_size(VALUE klass, VALUE size);
+static VALUE    NIO_Buffer_initialize(int argc, VALUE * argv, VALUE self);
+static VALUE    NIO_Buffer_clear(VALUE self);
+static VALUE    NIO_Buffer_size(VALUE self);
+static VALUE    NIO_Buffer_empty(VALUE self);
+static VALUE    NIO_Buffer_append(VALUE self, VALUE data);
+static VALUE    NIO_Buffer_prepend(VALUE self, VALUE data);
+static VALUE    NIO_Buffer_read(int argc, VALUE * argv, VALUE self);
+static VALUE    NIO_Buffer_read_frame(VALUE self, VALUE data, VALUE mark);
+static VALUE    NIO_Buffer_to_str(VALUE self);
+static VALUE    NIO_Buffer_read_from(VALUE self, VALUE io);
+static VALUE    NIO_Buffer_write_to(VALUE self, VALUE io);
 
 static struct buffer *buffer_new(void);
 static void     buffer_clear(struct buffer * buf);
@@ -81,60 +73,61 @@ static int      buffer_write_to(struct buffer * buf, int fd);
  * Ruby IO objects.
  */
 void
-Init_iobuffer_ext()
+Init_NIO_Buffer()
 {
-    cIO_Buffer = rb_define_class_under(rb_cIO, "Buffer", rb_cObject);
-    rb_define_alloc_func(cIO_Buffer, IO_Buffer_allocate);
+    mNIO = rb_define_module("NIO");
+    cNIO_Buffer = rb_define_class_under(mNIO, "Buffer", rb_cObject);
+    rb_define_alloc_func(cNIO_Buffer, NIO_Buffer_allocate);
 
-    rb_define_singleton_method(cIO_Buffer, "default_node_size",
-                   IO_Buffer_default_node_size, 0);
-    rb_define_singleton_method(cIO_Buffer, "default_node_size=",
-                   IO_Buffer_set_default_node_size, 1);
+    rb_define_singleton_method(cNIO_Buffer, "default_node_size",
+                   NIO_Buffer_default_node_size, 0);
+    rb_define_singleton_method(cNIO_Buffer, "default_node_size=",
+                   NIO_Buffer_set_default_node_size, 1);
 
-    rb_define_method(cIO_Buffer, "initialize", IO_Buffer_initialize, -1);
-    rb_define_method(cIO_Buffer, "clear", IO_Buffer_clear, 0);
-    rb_define_method(cIO_Buffer, "size", IO_Buffer_size, 0);
-    rb_define_method(cIO_Buffer, "empty?", IO_Buffer_empty, 0);
-    rb_define_method(cIO_Buffer, "<<", IO_Buffer_append, 1);
-    rb_define_method(cIO_Buffer, "append", IO_Buffer_append, 1);
-    rb_define_method(cIO_Buffer, "write", IO_Buffer_append, 1);
-    rb_define_method(cIO_Buffer, "prepend", IO_Buffer_prepend, 1);
-    rb_define_method(cIO_Buffer, "read", IO_Buffer_read, -1);
-    rb_define_method(cIO_Buffer, "read_frame", IO_Buffer_read_frame, 2);
-    rb_define_method(cIO_Buffer, "to_str", IO_Buffer_to_str, 0);
-    rb_define_method(cIO_Buffer, "read_from", IO_Buffer_read_from, 1);
-    rb_define_method(cIO_Buffer, "write_to", IO_Buffer_write_to, 1);
+    rb_define_method(cNIO_Buffer, "initialize", NIO_Buffer_initialize, -1);
+    rb_define_method(cNIO_Buffer, "clear", NIO_Buffer_clear, 0);
+    rb_define_method(cNIO_Buffer, "size", NIO_Buffer_size, 0);
+    rb_define_method(cNIO_Buffer, "empty?", NIO_Buffer_empty, 0);
+    rb_define_method(cNIO_Buffer, "<<", NIO_Buffer_append, 1);
+    rb_define_method(cNIO_Buffer, "append", NIO_Buffer_append, 1);
+    rb_define_method(cNIO_Buffer, "write", NIO_Buffer_append, 1);
+    rb_define_method(cNIO_Buffer, "prepend", NIO_Buffer_prepend, 1);
+    rb_define_method(cNIO_Buffer, "read", NIO_Buffer_read, -1);
+    rb_define_method(cNIO_Buffer, "read_frame", NIO_Buffer_read_frame, 2);
+    rb_define_method(cNIO_Buffer, "to_str", NIO_Buffer_to_str, 0);
+    rb_define_method(cNIO_Buffer, "read_from", NIO_Buffer_read_from, 1);
+    rb_define_method(cNIO_Buffer, "write_to", NIO_Buffer_write_to, 1);
 
-    rb_define_const(cIO_Buffer, "MAX_SIZE", INT2NUM(MAX_BUFFER_SIZE));
+    rb_define_const(cNIO_Buffer, "MAX_SIZE", INT2NUM(MAX_BUFFER_SIZE));
 }
 
 static VALUE
-IO_Buffer_allocate(VALUE klass)
+NIO_Buffer_allocate(VALUE klass)
 {
-    return Data_Wrap_Struct(klass, IO_Buffer_mark, IO_Buffer_free, buffer_new());
+    return Data_Wrap_Struct(klass, NIO_Buffer_mark, NIO_Buffer_free, buffer_new());
 }
 
 static void
-IO_Buffer_mark(struct buffer * buf)
+NIO_Buffer_mark(struct buffer * buf)
 {
     /* Naively discard the memory pool whenever Ruby garbage collects */
     buffer_free_pool(buf);
 }
 
 static void
-IO_Buffer_free(struct buffer * buf)
+NIO_Buffer_free(struct buffer * buf)
 {
     buffer_free(buf);
 }
 
 /**
  * call-seq:
- *   IO_Buffer.default_node_size -> 4096
+ *   NIO_Buffer.default_node_size -> 4096
  *
  * Retrieves the current value of the default node size.
  */
 static VALUE
-IO_Buffer_default_node_size(VALUE klass)
+NIO_Buffer_default_node_size(VALUE klass)
 {
     return UINT2NUM(default_node_size);
 }
@@ -157,12 +150,12 @@ convert_node_size(VALUE size)
 
 /**
  * call-seq:
- *   IO_Buffer.default_node_size = 16384
+ *   NIO_Buffer.default_node_size = 16384
  *
  * Sets the default node size for calling IO::Buffer.new with no arguments.
  */
 static VALUE
-IO_Buffer_set_default_node_size(VALUE klass, VALUE size)
+NIO_Buffer_set_default_node_size(VALUE klass, VALUE size)
 {
     default_node_size = convert_node_size(size);
 
@@ -171,12 +164,12 @@ IO_Buffer_set_default_node_size(VALUE klass, VALUE size)
 
 /**
  *  call-seq:
- *    IO_Buffer.new(size = IO::Buffer.default_node_size) -> IO_Buffer
+ *    NIO_Buffer.new(size = IO::Buffer.default_node_size) -> NIO_Buffer
  *
- * Create a new IO_Buffer with linked segments of the given size
+ * Create a new NIO_Buffer with linked segments of the given size
  */
 static VALUE
-IO_Buffer_initialize(int argc, VALUE * argv, VALUE self)
+NIO_Buffer_initialize(int argc, VALUE * argv, VALUE self)
 {
     VALUE           node_size_obj;
     struct buffer *buf;
@@ -198,12 +191,12 @@ IO_Buffer_initialize(int argc, VALUE * argv, VALUE self)
 
 /**
  *  call-seq:
- *    IO_Buffer#clear -> nil
+ *    NIO_Buffer#clear -> nil
  *
- * Clear all data from the IO_Buffer
+ * Clear all data from the NIO_Buffer
  */
 static VALUE
-IO_Buffer_clear(VALUE self)
+NIO_Buffer_clear(VALUE self)
 {
     struct buffer *buf;
     Data_Get_Struct(self, struct buffer, buf);
@@ -215,12 +208,12 @@ IO_Buffer_clear(VALUE self)
 
 /**
  *  call-seq:
- *    IO_Buffer#size -> Integer
+ *    NIO_Buffer#size -> Integer
  *
  * Return the size of the buffer in bytes
  */
 static VALUE
-IO_Buffer_size(VALUE self)
+NIO_Buffer_size(VALUE self)
 {
     struct buffer *buf;
     Data_Get_Struct(self, struct buffer, buf);
@@ -230,12 +223,12 @@ IO_Buffer_size(VALUE self)
 
 /**
  *  call-seq:
- *    IO_Buffer#empty? -> Boolean
+ *    NIO_Buffer#empty? -> Boolean
  *
  * Is the buffer empty?
  */
 static VALUE
-IO_Buffer_empty(VALUE self)
+NIO_Buffer_empty(VALUE self)
 {
     struct buffer *buf;
     Data_Get_Struct(self, struct buffer, buf);
@@ -245,12 +238,12 @@ IO_Buffer_empty(VALUE self)
 
 /**
  *  call-seq:
- *    IO_Buffer#append(data) -> String
+ *    NIO_Buffer#append(data) -> String
  *
  * Append the given data to the end of the buffer
  */
 static VALUE
-IO_Buffer_append(VALUE self, VALUE data)
+NIO_Buffer_append(VALUE self, VALUE data)
 {
     struct buffer *buf;
     Data_Get_Struct(self, struct buffer, buf);
@@ -264,12 +257,12 @@ IO_Buffer_append(VALUE self, VALUE data)
 
 /**
  *  call-seq:
- *    IO_Buffer#prepend(data) -> String
+ *    NIO_Buffer#prepend(data) -> String
  *
  * Prepend the given data to the beginning of the buffer
  */
 static VALUE
-IO_Buffer_prepend(VALUE self, VALUE data)
+NIO_Buffer_prepend(VALUE self, VALUE data)
 {
     struct buffer *buf;
     Data_Get_Struct(self, struct buffer, buf);
@@ -282,7 +275,7 @@ IO_Buffer_prepend(VALUE self, VALUE data)
 
 /**
  *  call-seq:
- *    IO_Buffer#read(length = nil) -> String
+ *    NIO_Buffer#read(length = nil) -> String
  *
  * Read the specified abount of data from the buffer.  If no value
  * is given the entire contents of the buffer are returned.  Any data
@@ -292,7 +285,7 @@ IO_Buffer_prepend(VALUE self, VALUE data)
  * the given length).
  */
 static VALUE
-IO_Buffer_read(int argc, VALUE * argv, VALUE self)
+NIO_Buffer_read(int argc, VALUE * argv, VALUE self)
 {
     VALUE  length_obj, str;
     int    length;
@@ -320,7 +313,7 @@ IO_Buffer_read(int argc, VALUE * argv, VALUE self)
 
 /**
  *  call-seq:
- *    IO_Buffer#read_frame(str, mark) -> boolean
+ *    NIO_Buffer#read_frame(str, mark) -> boolean
  *
  * Read up to and including the given frame marker (expressed a a
  * Fixnum 0-255) byte, copying into the supplied string object. If the mark is
@@ -329,7 +322,7 @@ IO_Buffer_read(int argc, VALUE * argv, VALUE self)
  *
  */
 static VALUE
-IO_Buffer_read_frame(VALUE self, VALUE data, VALUE mark)
+NIO_Buffer_read_frame(VALUE self, VALUE data, VALUE mark)
 {
     char mark_c = (char) NUM2INT(mark);
     struct buffer *buf;
@@ -345,12 +338,12 @@ IO_Buffer_read_frame(VALUE self, VALUE data, VALUE mark)
 
 /**
  *  call-seq:
- *    IO_Buffer#to_str -> String
+ *    NIO_Buffer#to_str -> String
  *
  * Convert the Buffer to a String.  The original buffer is unmodified.
  */
 static VALUE
-IO_Buffer_to_str(VALUE self)
+NIO_Buffer_to_str(VALUE self)
 {
     VALUE          str;
     struct buffer *buf;
@@ -365,14 +358,14 @@ IO_Buffer_to_str(VALUE self)
 
 /**
  *  call-seq:
- *    IO_Buffer#read_from(io) -> Integer
+ *    NIO_Buffer#read_from(io) -> Integer
  *
  * Perform a nonblocking read of the the given IO object and fill
  * the buffer with any data received.  The call will read as much
  * data as it can until the read would block.
  */
 static VALUE
-IO_Buffer_read_from(VALUE self, VALUE io)
+NIO_Buffer_read_from(VALUE self, VALUE io)
 {
     struct buffer  *buf;
     int             ret;
@@ -392,14 +385,14 @@ IO_Buffer_read_from(VALUE self, VALUE io)
 
 /**
  *  call-seq:
- *    IO_Buffer#write_to(io) -> Integer
+ *    NIO_Buffer#write_to(io) -> Integer
  *
  * Perform a nonblocking write of the buffer to the given IO object.
  * As much data as possible is written until the call would block.
  * Any data which is written is removed from the buffer.
  */
 static VALUE
-IO_Buffer_write_to(VALUE self, VALUE io)
+NIO_Buffer_write_to(VALUE self, VALUE io)
 {
     struct buffer  *buf;
 #if HAVE_RB_IO_T
