@@ -1,5 +1,6 @@
 HEAD
 ----
+* Merge iobuffer gem in as NIO::Buffer
 * OpenSSL::SSL::SSLSocket support
 
 0.3.3
