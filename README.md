@@ -133,6 +133,83 @@ block:
 Monitors also support a ***#value*** and ***#value=*** method for storing a
 handle to an arbitrary object of your choice (e.g. a proc)
 
+### Buffers
+
+NIO::Buffer is a fast byte queue which is primarily intended for non-blocking
+I/O applications but is suitable wherever buffering is required.
+
+NIO::Buffer provides a subset of the methods available in Strings:
+
+```ruby
+>> buf = NIO::Buffer.new
+=> #<NIO::Buffer:0x12fc708>
+>> buf << "foo"
+=> "foo"
+>> buf << "bar"
+=> "bar"
+>> buf.to_str
+=> "foobar"
+>> buf.size
+=> 6
+```
+
+The NIO::Buffer#<< method is an alias for NIO::Buffer#append.  A prepend method
+is also available:
+
+```ruby
+>> buf = NIO::Buffer.new
+=> #<NIO::Buffer:0x12f5250>
+>> buf.append "bar"
+=> "bar"
+>> buf.prepend "foo"
+=> "foo"
+>> buf.append "baz"
+=> "baz"
+>> buf.to_str
+=> "foobarbaz"
+```
+
+NIO::Buffer#read can be used to retrieve the contents of a buffer.  You can mix
+reads alongside adding more data to the buffer:
+
+```ruby
+>> buf = NIO::Buffer.new
+=> #<NIO::Buffer:0x12fc5f0>
+>> buf << "foo"
+=> "foo"
+>> buf.read 2
+=> "fo"
+>> buf << "bar"
+=> "bar"
+>> buf.read 2
+=> "ob"
+>> buf << "baz"
+=> "baz"
+>> buf.read 3
+=> "arb"
+```
+
+Finally, NIO::Buffer provides methods for performing non-blocking I/O with the
+contents of the buffer. The NIO::Buffer#read_from(IO) method will read as much
+data as possible from the given IO object until the read would block.
+
+The NIO::Buffer#write_to(IO) method writes the contents of the buffer to the
+given IO object until either the buffer is empty or the write would block:
+
+```ruby
+>> buf = NIO::Buffer.new
+=> #<NIO::Buffer:0x12fc5c8>
+>> file = File.open("README")
+=> #<File:README>
+>> buf.read_from(file)
+=> 1713
+>> buf.to_str
+=> "= NIO::Buffer\n\nNIO::Buffer is a fast byte queue...
+```
+
+If the file descriptor is not ready for I/O, the Errno::EAGAIN exception is
+raised indicating no I/O was performed.
+
 Concurrency
 -----------
 
