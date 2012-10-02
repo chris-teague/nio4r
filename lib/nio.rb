@@ -10,7 +10,11 @@ module NIO
   def self.engine; ENGINE end
 end
 
-if ENV["NIO4R_PURE"]
+def windows?
+  !!(RbConfig::CONFIG['host_os'] =~ /mswin|win32|dos|mingw32/i)
+end
+
+if ENV["NIO4R_PURE"] || windows?
   require 'nio/monitor'
   require 'nio/selector'
   NIO::ENGINE = 'select'
