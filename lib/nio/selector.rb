@@ -62,7 +62,9 @@ module NIO
             # Clear all wakeup signals we've received by reading them
             # Wakeups should have level triggered behavior
             begin
-              @wakeup.read_nonblock(1024)
+
+              @wakeup.read(1024)
+              #@wakeup.read_nonblock(1024)
 
               # Loop until we've drained all incoming events
               redo
