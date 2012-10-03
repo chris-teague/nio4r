@@ -8,13 +8,13 @@ module NIO
   # * libev: as a C extension using libev
   # * java: using Java NIO
   def self.engine; ENGINE end
+
+  def self.windows?
+    !!(RbConfig::CONFIG['host_os'] =~ /mswin|win32|dos|mingw32/i)
+  end
 end
 
-def windows?
-  !!(RbConfig::CONFIG['host_os'] =~ /mswin|win32|dos|mingw32/i)
-end
-
-if ENV["NIO4R_PURE"] || windows?
+if ENV["NIO4R_PURE"] || NIO::windows?
   require 'nio/monitor'
   require 'nio/selector'
   NIO::ENGINE = 'select'

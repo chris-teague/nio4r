@@ -63,8 +63,15 @@ module NIO
             # Wakeups should have level triggered behavior
             begin
 
-              @wakeup.read(1024)
-              #@wakeup.read_nonblock(1024)
+              
+              # FIXME: Windows does not like IO.pipe's read_nonblock.
+              #        For now, do the dodgy and accept a blocking read.
+
+              if NIO::windows?
+                @wakeup.read(1024)
+              else
+                @wakeup.read_nonblock(1024)
+              end
 
               # Loop until we've drained all incoming events
               redo
