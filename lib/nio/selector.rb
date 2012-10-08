@@ -62,40 +62,40 @@ module NIO
 
         require 'thread'
 
-        ready_readers.each do |io|
-          if io == @wakeup
-            # Clear all wakeup signals we've received by reading them
-            # Wakeups should have level triggered behavior
-            begin
+        Thread.new {
+          ready_readers.each do |io|
+            if io == @wakeup
+              # Clear all wakeup signals we've received by reading them
+              # Wakeups should have level triggered behavior
+              begin
 
-              
-              # FIXME: Windows does not like IO.pipe's read_nonblock.
-              #        For now, do the dodgy and accept a blocking read.
+                p "READY READER ##{count}"
+                
+                # FIXME: Windows does not like IO.pipe's read_nonblock.
+                #        For now, do the dodgy and accept a blocking read.
 
-              if NIO::windows?
-                puts "THREAD COUNT: #{win_threads.count}"
-                win_threads[count] = Thread.new {
+                if NIO::windows?
                   @wakeup.read(1024)
-                }
-                count += 1
-              else
-                @wakeup.read_nonblock(1024)
+                  count += 1
+                else
+                  @wakeup.read_nonblock(1024)
+                end
+
+                # Loop until we've drained all incoming events
+                redo
+              rescue Errno::EWOULDBLOCK
               end
 
-              # Loop until we've drained all incoming events
-              redo
-            rescue Errno::EWOULDBLOCK
+              count += 1
+              
+              return
+            else
+              monitor = @selectables[io]
+              monitor.readiness = :r
+              selected_monitors << monitor
             end
-
-            return
-          else
-            monitor = @selectables[io]
-            monitor.readiness = :r
-            selected_monitors << monitor
           end
-        end
-
-        win_threads.each { |t| t.join }
+        }.join
         
         ready_writers.each do |io|
           monitor = @selectables[io]
