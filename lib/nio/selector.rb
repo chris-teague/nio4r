@@ -57,6 +57,9 @@ module NIO
         
         selected_monitors = Set.new
 
+        win_threads = []
+        count = 0
+
         ready_readers.each do |io|
           if io == @wakeup
             # Clear all wakeup signals we've received by reading them
@@ -68,7 +71,12 @@ module NIO
               #        For now, do the dodgy and accept a blocking read.
 
               if NIO::windows?
-                @wakeup.read(1024)
+
+                win_threads[count] = Thread.new {
+                  @wakeup.read(1024)
+                }
+                count += 1
+
               else
                 @wakeup.read_nonblock(1024)
               end
@@ -85,6 +93,8 @@ module NIO
             selected_monitors << monitor
           end
         end
+
+        win_threads.each { |t| t.join }
         
         ready_writers.each do |io|
           monitor = @selectables[io]
