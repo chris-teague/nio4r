@@ -60,6 +60,8 @@ module NIO
         win_threads = []
         count = 0
 
+        require 'thread'
+
         ready_readers.each do |io|
           if io == @wakeup
             # Clear all wakeup signals we've received by reading them
@@ -71,12 +73,11 @@ module NIO
               #        For now, do the dodgy and accept a blocking read.
 
               if NIO::windows?
-
+                puts "THREAD COUNT: #{win_threads.count}"
                 win_threads[count] = Thread.new {
                   @wakeup.read(1024)
                 }
                 count += 1
-
               else
                 @wakeup.read_nonblock(1024)
               end
