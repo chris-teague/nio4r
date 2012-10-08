@@ -62,6 +62,8 @@ module NIO
 
         require 'thread'
 
+        p "READYREADERS: #{ready_readers.count}"
+
         Thread.new {
           ready_readers.each do |io|
             if io == @wakeup
@@ -87,7 +89,7 @@ module NIO
               end
 
               count += 1
-              
+
               return
             else
               monitor = @selectables[io]
